@@ -24,6 +24,20 @@ class Observable {
     subscription.add(this.fn(subscriber))
     return subscription
   }
+
+  map(fn) {
+    return new Observable(subscriber => {
+      const sub = this.subscribe({
+        next: value => subscriber.next(fn(value)),
+        error: err => subscriber.error(fn(err)),
+        complete: ()  => subscriber.complete()
+      })
+
+      return () => {
+        sub.unsubscribe()
+      }
+    })
+  }
 }
 
 class Subscriber {
@@ -67,7 +81,7 @@ const observable = new Observable((subscriber) => {
     if(i > 3) {
       subscriber.complete()
     }
-  }, 100)
+  }, 1000)
 
   return () => {
     console.log("Terminating")
@@ -75,7 +89,7 @@ const observable = new Observable((subscriber) => {
   }
 });
 
-const sub = observable.subscribe({
+const sub = observable.map(x => x * 2).subscribe({
   next: value => console.log(value),
   error: err => console.log(err),
   complete: () => console.log("COMPLETED")
