@@ -1,96 +1,107 @@
-console.clear()
+console.clear();
 
 class Subscription {
-  subscribers = []
+  subscribers = [];
 
-  add(fn) {
-    this.subscribers.push(fn)
+  add(subscriber) {
+    this.subscribers.push(subscriber);
   }
 
   unsubscribe() {
-    this.subscribers.forEach(fn => fn())
-    this.subscribers = []
+    this.subscribers.forEach(subscription => subscription());
+    this.subscribers = [];
+  }
+}
+
+class Subscriber {
+  closed = false;
+
+  constructor(observer, subscription) {
+    this.observer = observer;
+    this.subscription = subscription;
+  }
+
+  next(value) {
+    if (!this.closed) {
+      this.observer.next(value);
+    }
+  }
+
+  error(err) {
+    if (!this.closed) {
+      this.closed = true;
+      this.observer.error(err);
+      this.subscription.unsubscribe();
+    }
+  }
+
+  complete() {
+    if (!this.closed) {
+      this.closed = true;
+      this.observer.complete();
+      this.subscription.unsubscribe();
+    }
   }
 }
 
 class Observable {
   constructor(fn) {
-    this.fn = fn
+    this.fn = fn;
   }
 
   subscribe(observer) {
-    const subscription = new Subscription()
-    const subscriber = new Subscriber(observer, subscription)
-    subscription.add(this.fn(subscriber))
-    return subscription
+    const subscription = new Subscription();
+    const subscriber = new Subscriber(observer, subscription);
+    subscription.add(this.fn(subscriber));
+    return subscription;
   }
 
-  map(fn) {
-    return new Observable(subscriber => {
-      const sub = this.subscribe({
-        next: value => subscriber.next(fn(value)),
-        error: err => subscriber.error(fn(err)),
-        complete: ()  => subscriber.complete()
-      })
-
-      return () => {
-        sub.unsubscribe()
-      }
-    })
+  pipe(...fns) {
+    return pipe(...fns)(this);
   }
 }
 
-class Subscriber {
-  closed = false
-  constructor(observer, subscription) {
-    this.observer = observer
-    this.subscription = subscription
+const pipe = (...fns) => {
+  return source => {
+    return fns.reduce((prev, fn) => fn(prev), source);
+  };
+};
 
-    this.subscription.add(() => (this.closed = true))
-  }
-
-  next(value) {
-    if(!this.closed) {
-      this.observer.next(value)
-    }
-  }
-
-  error(err) {
-    if(!this.closed) {
-      this.closed = true
-      this.observer.error(err)
-      this.subscription.unsubscribe()
-    }
-  }
-
-  complete() {
-    if(!this.closed) {
-      this.closed = true
-      this.observer.complete()
-      this.subscription.unsubscribe()
-    }
-  }
-}
-
-const observable = new Observable((subscriber) => {
-  let i = 0
-
+const observable = new Observable(subscriber => {
+  let count = 0;
   const timer = setInterval(() => {
-    subscriber.next(i++)
-
-    if(i > 3) {
-      subscriber.complete()
+    subscriber.next(++count);
+    if (count > 3) {
+      subscriber.complete();
+      subscriber.next(5);
     }
-  }, 1000)
+  }, 100);
 
   return () => {
-    console.log("Terminating")
-    clearInterval(timer)
-  }
+    console.log("tearing down");
+    clearInterval(timer);
+  };
 });
 
-const sub = observable.map(x => x * 2).subscribe({
-  next: value => console.log(value),
-  error: err => console.log(err),
-  complete: () => console.log("COMPLETED")
-})
+const map = fn => source => {
+  return new Observable(subscriber => {
+    const subscription = source.subscribe({
+      next: value => subscriber.next(fn(value)),
+      error: err => subscriber.error(err),
+      complete: _ => subscriber.complete()
+    });
+    return () => subscription.unsubscribe();
+  });
+};
+
+const subscription = observable
+  .pipe(
+    map(x => x * 2),
+    map(x => x * 4),
+    map(x => x * 8)
+  )
+  .subscribe({
+    next: value => console.log(value),
+    error: stack => console.log(stack),
+    complete: _ => console.log("COMPLETED")
+  });
